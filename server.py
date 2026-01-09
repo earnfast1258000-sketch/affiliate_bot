@@ -1,16 +1,42 @@
-from flask import Flask
+from flask import request
+from pymongo import MongoClient
 
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Bot server running", 200
+MONGO_URI = "PASTE_YOUR_MONGODB_URI_HERE"
+client = MongoClient(MONGO_URI)
+db = client["affiliate_bot"]
+users = db["users"]
+postbacks = db["postbacks"]
 
 @app.route("/postback")
 def postback():
-    return "postback working", 200
+    user_id = request.args.get("user_id")
+    amount = request.args.get("amount")
+    txid = request.args.get("txid")
 
-if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    if not user_id or not amount or not txid:
+        return "missing params", 400
+
+    # duplicate check
+    if postbacks.find_one({"txid": txid}):
+        return "duplicate", 200
+
+    amount = float(amount)
+
+    users.update_one(
+        {"telegram_id": int(user_id)},
+        {
+            "$inc": {
+                "wallet": amount,
+                "total_earned": amount
+            }
+        },
+        upsert=True
+    )
+
+    postbacks.insert_one({
+        "txid": txid,
+        "user_id": int(user_id),
+        "amount": amount
+    })
+
+    return "ok", 200
