@@ -193,6 +193,35 @@ async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text("Balance added ✅")
 
+async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    try:
+        name = context.args[0]
+        ctype = context.args[1].upper()
+        payout = int(context.args[2])
+    except:
+        await update.message.reply_text(
+            "Usage:\n/addcampaign <name> <CPI/CPA> <amount>"
+        )
+        return
+
+    campaigns.insert_one({
+        "name": name,
+        "type": ctype,
+        "payout": payout,
+        "status": "active"
+    })
+
+    await update.message.reply_text(
+        f"✅ Campaign Added\n\n"
+        f"Name: {name}\n"
+        f"Type: {ctype}\n"
+        f"Payout: ₹{payout}"
+    )
+
+
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -201,6 +230,7 @@ app.add_handler(CommandHandler("addbalance", addbalance))
 app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+app.add_handler(CommandHandler("addcampaign", addcampaign))
 
 print("Bot is running...")
 app.run_polling()
