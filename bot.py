@@ -55,7 +55,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-
     user = get_user(q.from_user)
 
     if q.data == "dashboard":
@@ -75,7 +74,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for c in campaigns.find({"status": "active"}):
             found = True
-            base_link = c["link"]
+            base_link = c.get("link", "")
             tracking_link = f"{base_link}&p1={user_id}"
 
             text += (
@@ -84,7 +83,11 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👉 {tracking_link}\n\n"
             )
 
-        await q.edit_message_text(text if found else "❌ No campaigns available")
+        # 🔥 IMPORTANT FIX: send_message instead of edit_message_text
+        await context.bot.send_message(
+            chat_id=q.message.chat.id,
+            text=text if found else "❌ No campaigns available"
+        )
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
@@ -115,19 +118,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = get_user(update.effective_user)
 
-    # Withdraw amount
     if context.user_data.get("withdraw_step") == "amount":
         if not text.isdigit():
             await update.message.reply_text("❌ Enter valid amount")
             return
 
         amount = int(text)
-        if amount < 100:
-            await update.message.reply_text("❌ Minimum withdraw ₹100")
-            return
-
-        if user["wallet"] < amount:
-            await update.message.reply_text("❌ Insufficient balance")
+        if amount < 100 or user["wallet"] < amount:
+            await update.message.reply_text("❌ Invalid or insufficient balance")
             context.user_data.clear()
             return
 
@@ -135,12 +133,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["withdraw_step"] = "upi"
         await update.message.reply_text("Enter your UPI ID:")
 
-    # Withdraw UPI
     elif context.user_data.get("withdraw_step") == "upi":
         amount = context.user_data["amount"]
         upi = text
 
-        # Deduct immediately (prevent double withdraw)
         users.update_one(
             {"telegram_id": uid},
             {
@@ -213,10 +209,6 @@ async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
 
-    if len(context.args) < 2:
-        await update.message.reply_text("Usage: /addbalance user_id amount")
-        return
-
     uid = int(context.args[0])
     amt = int(context.args[1])
 
@@ -224,7 +216,6 @@ async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         {"telegram_id": uid},
         {"$inc": {"wallet": amt, "total_earned": amt}}
     )
-
     await update.message.reply_text("✅ Balance added")
 
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -250,10 +241,7 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "status": "active"
     })
 
-    await update.message.reply_text(
-        f"✅ Campaign Added\n\n"
-        f"{name} – ₹{payout} ({ctype})"
-    )
+    await update.message.reply_text("✅ Campaign added")
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
