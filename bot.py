@@ -11,7 +11,11 @@ from bson import ObjectId
 # ========= CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+
+ADMIN_ID = os.getenv("ADMIN_ID")
+if not ADMIN_ID:
+    raise Exception("ADMIN_ID not set")
+ADMIN_ID = int(ADMIN_ID)
 
 # ========= DB =========
 client = MongoClient(MONGO_URI)
@@ -83,7 +87,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👉 {tracking_link}\n\n"
             )
 
-        # 🔥 IMPORTANT FIX: send_message instead of edit_message_text
+        # IMPORTANT: send_message (Telegram silent fail fix)
         await context.bot.send_message(
             chat_id=q.message.chat.id,
             text=text if found else "❌ No campaigns available"
@@ -91,7 +95,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
-
         if user["last_withdraw_date"] == today:
             await q.edit_message_text("❌ Daily withdraw limit reached")
             return
@@ -103,7 +106,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif q.data == "history":
         text = "📜 Withdraw History\n\n"
         found = False
-
         for w in withdraws.find(
             {"user_id": user["telegram_id"]}
         ).sort("_id", -1).limit(5):
@@ -207,6 +209,7 @@ async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========= ADMIN COMMANDS =========
 async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Not admin")
         return
 
     uid = int(context.args[0])
@@ -219,7 +222,10 @@ async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Balance added")
 
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🟢 addcampaign command received")
+
     if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Not admin")
         return
 
     if len(context.args) < 4:
@@ -233,15 +239,21 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payout = int(context.args[2])
     link = context.args[3]
 
-    campaigns.insert_one({
+    res = campaigns.insert_one({
         "name": name,
         "type": ctype,
         "payout": payout,
         "link": link,
-        "status": "active"
+        "status": "active",
+        "created_at": datetime.utcnow()
     })
 
-    await update.message.reply_text("✅ Campaign added")
+    await update.message.reply_text(
+        f"✅ Campaign Added\n\n"
+        f"Name: {name}\n"
+        f"Payout: ₹{payout}\n"
+        f"ID: {res.inserted_id}"
+    )
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
