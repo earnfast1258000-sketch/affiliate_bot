@@ -91,27 +91,23 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👉 {tracking_link}\n\n"
             )
 
-        # SAFE reply (no silent fail)
-        try:
-            await q.edit_message_text(
-                text if found else "❌ No campaigns available",
-                disable_web_page_preview=True
-            )
-        except:
-            await context.bot.send_message(
-                chat_id=q.message.chat.id,
-                text=text if found else "❌ No campaigns available"
-            )
+        # ✅ FIX: reply_text (never silent fail)
+        await q.message.reply_text(
+            text if found else "❌ No campaigns available",
+            disable_web_page_preview=True
+        )
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
         if user["last_withdraw_date"] == today:
-            await q.edit_message_text("❌ Daily withdraw limit reached")
+            await q.message.reply_text("❌ Daily withdraw limit reached")
             return
 
         context.user_data.clear()
         context.user_data["withdraw_step"] = "amount"
-        await q.edit_message_text("Enter withdraw amount (min ₹100):")
+
+        # ✅ FIX: reply_text
+        await q.message.reply_text("Enter withdraw amount (min ₹100):")
 
     elif q.data == "history":
         text = "📜 Withdraw History\n\n"
@@ -122,7 +118,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found = True
             text += f"₹{w['amount']} – {w['status'].upper()}\n"
 
-        await q.edit_message_text(text if found else "No withdraw history")
+        await q.message.reply_text(text if found else "No withdraw history")
 
 # ========= TEXT HANDLER =========
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -157,31 +153,18 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         )
 
-        wid = withdraws.insert_one({
+        withdraws.insert_one({
             "user_id": uid,
             "amount": amount,
             "upi": upi,
             "status": "pending",
             "created_at": datetime.utcnow()
-        }).inserted_id
-
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("✅ Approve", callback_data=f"approve_{wid}"),
-                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{wid}")
-            ]
-        ])
-
-        await context.bot.send_message(
-            ADMIN_ID,
-            f"💸 Withdraw Request\n\nUser: {uid}\nAmount: ₹{amount}\nUPI: {upi}",
-            reply_markup=kb
-        )
+        })
 
         context.user_data.clear()
         await update.message.reply_text("Withdraw request submitted ⏳")
 
-# ========= ADMIN COMMANDS =========
+# ========= ADMIN COMMAND =========
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -202,49 +185,19 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "type": ctype,
         "payout": payout,
         "link": link,
-        "daily_cap": 100000,  # default safe
-        "user_cap": 1,        # default safe
+        "daily_cap": 100000,
+        "user_cap": 1,
         "status": "active",
         "created_at": datetime.utcnow()
     })
 
     await update.message.reply_text("✅ Campaign added")
 
-async def pausecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    name = context.args[0]
-    res = campaigns.update_one(
-        {"name": name},
-        {"$set": {"status": "paused"}}
-    )
-
-    await update.message.reply_text(
-        "⏸ Campaign paused" if res.matched_count else "❌ Campaign not found"
-    )
-
-async def resumecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    name = context.args[0]
-    res = campaigns.update_one(
-        {"name": name},
-        {"$set": {"status": "active"}}
-    )
-
-    await update.message.reply_text(
-        "▶️ Campaign resumed" if res.matched_count else "❌ Campaign not found"
-    )
-
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
-app.add_handler(CommandHandler("pausecampaign", pausecampaign))
-app.add_handler(CommandHandler("resumecampaign", resumecampaign))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
