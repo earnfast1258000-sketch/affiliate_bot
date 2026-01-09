@@ -12,15 +12,14 @@ from bson import ObjectId
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
-# ==========================
 
+# ========= DB =========
 client = MongoClient(MONGO_URI)
 db = client["affiliate_bot"]
 
 users = db["users"]
 withdraws = db["withdraws"]
 campaigns = db["campaigns"]
-applications = db["applications"]
 
 # ========= HELPERS =========
 def get_user(user):
@@ -50,7 +49,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-# ========= BUTTONS =========
+# ========= BUTTON HANDLER =========
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -67,26 +66,22 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
 
     elif q.data == "campaigns":
-    user_id = q.from_user.id
-    text = "📣 Campaigns\n\n"
+        user_id = q.from_user.id
+        text = "📣 Campaigns\n\n"
+        found = False
 
-    found = False
-    for c in campaigns.find():
-        found = True
+        for c in campaigns.find({"status": "active"}):
+            found = True
+            base_link = c["link"]
+            tracking = f"{base_link}&p1={user_id}"
 
-        # base affiliate link DB se
-        base_link = c["link"]   # example: https://affiliatepanel.com/offer?id=123
+            text += (
+                f"🔥 {c['name']}\n"
+                f"💰 ₹{c['payout']} ({c['type']})\n"
+                f"👉 {tracking}\n\n"
+            )
 
-        # tracking link with user_id (p1)
-        tracking_link = f"{base_link}&p1={user_id}"
-
-        text += (
-            f"🔥 {c['name']}\n"
-            f"💰 Payout: ₹{c['payout']} ({c['type']})\n"
-            f"👉 {tracking_link}\n\n"
-        )
-
-    await q.edit_message_text(text if found else "No campaigns available")
+        await q.edit_message_text(text if found else "No campaigns available")
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
@@ -99,32 +94,35 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif q.data == "history":
         text = "📜 Withdraw History\n\n"
         found = False
-        for w in withdraws.find({"user_id": user["telegram_id"]}).sort("_id", -1).limit(5):
+        for w in withdraws.find(
+            {"user_id": user["telegram_id"]}
+        ).sort("_id", -1).limit(5):
             found = True
             text += f"₹{w['amount']} – {w['status'].upper()}\n"
+
         await q.edit_message_text(text if found else "No withdraw history")
 
-# ========= TEXT =========
+# ========= TEXT HANDLER =========
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
     user = get_user(update.effective_user)
 
-    # Withdraw amount
     if context.user_data.get("withdraw_step") == "amount":
         if not text.isdigit():
             await update.message.reply_text("Enter valid amount")
             return
+
         amount = int(text)
         if amount < 100 or user["wallet"] < amount:
             await update.message.reply_text("Invalid or insufficient balance")
             context.user_data.clear()
             return
+
         context.user_data["amount"] = amount
         context.user_data["withdraw_step"] = "upi"
         await update.message.reply_text("Enter your UPI ID:")
 
-    # Withdraw UPI
     elif context.user_data.get("withdraw_step") == "upi":
         amount = context.user_data["amount"]
         upi = text
@@ -161,10 +159,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         await update.message.reply_text("Withdraw request submitted ⏳")
 
-# ========= ADMIN =========
+# ========= ADMIN ACTIONS =========
 async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+
     action, wid = q.data.split("_")
     w = withdraws.find_one({"_id": ObjectId(wid)})
 
@@ -190,9 +189,12 @@ async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"$set": {"status": "rejected"}}
         )
         await q.edit_message_text("Rejected ❌")
-        await context.bot.send_message(w["user_id"], "Withdraw rejected, amount refunded")
+        await context.bot.send_message(
+            w["user_id"],
+            "Withdraw rejected ❌ Amount refunded"
+        )
 
-# ========= ADMIN ADD BALANCE =========
+# ========= ADMIN COMMANDS =========
 async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -212,14 +214,14 @@ async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-
     try:
         name = context.args[0]
         ctype = context.args[1].upper()
         payout = int(context.args[2])
+        link = context.args[3]
     except:
         await update.message.reply_text(
-            "Usage:\n/addcampaign <name> <CPI/CPA> <amount>"
+            "Usage:\n/addcampaign <name> <CPI/CPA> <amount> <link>"
         )
         return
 
@@ -227,27 +229,21 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "name": name,
         "type": ctype,
         "payout": payout,
+        "link": link,
         "status": "active"
     })
 
-    await update.message.reply_text(
-        f"✅ Campaign Added\n\n"
-        f"Name: {name}\n"
-        f"Type: {ctype}\n"
-        f"Payout: ₹{payout}"
-    )
-
+    await update.message.reply_text("Campaign added ✅")
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addbalance", addbalance))
+app.add_handler(CommandHandler("addcampaign", addcampaign))
 app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-app.add_handler(CommandHandler("addcampaign", addcampaign))
-app.add_handler(CallbackQueryHandler(button_handler))
 
 print("Bot is running...")
 app.run_polling()
