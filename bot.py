@@ -37,6 +37,7 @@ def get_user(user):
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_user(update.effective_user)
+
     kb = [
         [InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")],
         [InlineKeyboardButton("📢 Campaigns", callback_data="campaigns")],
@@ -44,6 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🏦 Withdraw", callback_data="withdraw")],
         [InlineKeyboardButton("📜 Withdraw History", callback_data="history")]
     ]
+
     await update.message.reply_text(
         "Welcome to Affiliate Bot 👋",
         reply_markup=InlineKeyboardMarkup(kb)
@@ -53,6 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+
     user = get_user(q.from_user)
 
     if q.data == "dashboard":
@@ -73,27 +76,31 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for c in campaigns.find({"status": "active"}):
             found = True
             base_link = c["link"]
-            tracking = f"{base_link}&p1={user_id}"
+            tracking_link = f"{base_link}&p1={user_id}"
 
             text += (
                 f"🔥 {c['name']}\n"
                 f"💰 ₹{c['payout']} ({c['type']})\n"
-                f"👉 {tracking}\n\n"
+                f"👉 {tracking_link}\n\n"
             )
 
-        await q.edit_message_text(text if found else "No campaigns available")
+        await q.edit_message_text(text if found else "❌ No campaigns available")
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
+
         if user["last_withdraw_date"] == today:
             await q.edit_message_text("❌ Daily withdraw limit reached")
             return
+
+        context.user_data.clear()
         context.user_data["withdraw_step"] = "amount"
         await q.edit_message_text("Enter withdraw amount (min ₹100):")
 
     elif q.data == "history":
         text = "📜 Withdraw History\n\n"
         found = False
+
         for w in withdraws.find(
             {"user_id": user["telegram_id"]}
         ).sort("_id", -1).limit(5):
@@ -108,14 +115,19 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = get_user(update.effective_user)
 
+    # Withdraw amount
     if context.user_data.get("withdraw_step") == "amount":
         if not text.isdigit():
-            await update.message.reply_text("Enter valid amount")
+            await update.message.reply_text("❌ Enter valid amount")
             return
 
         amount = int(text)
-        if amount < 100 or user["wallet"] < amount:
-            await update.message.reply_text("Invalid or insufficient balance")
+        if amount < 100:
+            await update.message.reply_text("❌ Minimum withdraw ₹100")
+            return
+
+        if user["wallet"] < amount:
+            await update.message.reply_text("❌ Insufficient balance")
             context.user_data.clear()
             return
 
@@ -123,10 +135,12 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["withdraw_step"] = "upi"
         await update.message.reply_text("Enter your UPI ID:")
 
+    # Withdraw UPI
     elif context.user_data.get("withdraw_step") == "upi":
         amount = context.user_data["amount"]
         upi = text
 
+        # Deduct immediately (prevent double withdraw)
         users.update_one(
             {"telegram_id": uid},
             {
@@ -152,7 +166,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await context.bot.send_message(
             ADMIN_ID,
-            f"Withdraw Request\nUser: {uid}\n₹{amount}\nUPI: {upi}",
+            f"💸 Withdraw Request\n\nUser: {uid}\nAmount: ₹{amount}\nUPI: {upi}",
             reply_markup=kb
         )
 
@@ -168,7 +182,7 @@ async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     w = withdraws.find_one({"_id": ObjectId(wid)})
 
     if not w or w["status"] != "pending":
-        await q.edit_message_text("Invalid request")
+        await q.edit_message_text("❌ Invalid request")
         return
 
     if action == "approve":
@@ -176,8 +190,8 @@ async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"_id": ObjectId(wid)},
             {"$set": {"status": "approved"}}
         )
-        await q.edit_message_text("Approved ✅")
-        await context.bot.send_message(w["user_id"], "Withdraw approved ✅")
+        await q.edit_message_text("✅ Approved")
+        await context.bot.send_message(w["user_id"], "✅ Withdraw approved")
 
     elif action == "reject":
         users.update_one(
@@ -188,42 +202,45 @@ async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"_id": ObjectId(wid)},
             {"$set": {"status": "rejected"}}
         )
-        await q.edit_message_text("Rejected ❌")
+        await q.edit_message_text("❌ Rejected")
         await context.bot.send_message(
             w["user_id"],
-            "Withdraw rejected ❌ Amount refunded"
+            "❌ Withdraw rejected, amount refunded"
         )
 
 # ========= ADMIN COMMANDS =========
 async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    try:
-        uid = int(context.args[0])
-        amt = int(context.args[1])
-    except:
+
+    if len(context.args) < 2:
         await update.message.reply_text("Usage: /addbalance user_id amount")
         return
+
+    uid = int(context.args[0])
+    amt = int(context.args[1])
 
     users.update_one(
         {"telegram_id": uid},
         {"$inc": {"wallet": amt, "total_earned": amt}}
     )
-    await update.message.reply_text("Balance added ✅")
+
+    await update.message.reply_text("✅ Balance added")
 
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    try:
-        name = context.args[0]
-        ctype = context.args[1].upper()
-        payout = int(context.args[2])
-        link = context.args[3]
-    except:
+
+    if len(context.args) < 4:
         await update.message.reply_text(
             "Usage:\n/addcampaign <name> <CPI/CPA> <amount> <link>"
         )
         return
+
+    name = context.args[0]
+    ctype = context.args[1].upper()
+    payout = int(context.args[2])
+    link = context.args[3]
 
     campaigns.insert_one({
         "name": name,
@@ -233,7 +250,10 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "status": "active"
     })
 
-    await update.message.reply_text("Campaign added ✅")
+    await update.message.reply_text(
+        f"✅ Campaign Added\n\n"
+        f"{name} – ₹{payout} ({ctype})"
+    )
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
