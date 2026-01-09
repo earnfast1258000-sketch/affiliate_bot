@@ -1,159 +1,153 @@
 import os
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
     ContextTypes,
+    filters
 )
 from pymongo import MongoClient
-from datetime import datetime
+from bson import ObjectId
 
-# ================= CONFIG =================
-BOT_TOKEN = os.getenv("BOT_TOKEN") or "8516452076:AAFxCygUUCksJaIe7bOWBwKdLICApe-RW5A"
-MONGO_URI = os.getenv("MONGO_URI") or "mongodb+srv://botuser:bot97941923@cluster0.cnvz6ta.mongodb.net/?appName=Cluster0"
-ADMIN_ID = int(os.getenv("ADMIN_ID") or 7731384448)
-# ========================================
+# ============ CONFIG ============
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+# ================================
 
 client = MongoClient(MONGO_URI)
 db = client["affiliate_bot"]
-
 users = db["users"]
 withdraws = db["withdraws"]
 
-# ================= HELPERS =================
-def get_user(user):
-    u = users.find_one({"telegram_id": user.id})
-    if not u:
+# ---------- START ----------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not users.find_one({"telegram_id": user.id}):
         users.insert_one({
             "telegram_id": user.id,
-            "username": user.username,
-            "wallet": 0,
-            "total_earned": 0,
-            "created_at": datetime.utcnow()
+            "wallet": 0
         })
-        u = users.find_one({"telegram_id": user.id})
-    return u
-# ===========================================
 
-# ================= COMMANDS =================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = get_user(update.effective_user)
-
-    keyboard = [
-        [InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")],
+    kb = [
         [InlineKeyboardButton("💰 Wallet", callback_data="wallet")],
-        [InlineKeyboardButton("📢 Campaigns", callback_data="campaigns")],
-        [InlineKeyboardButton("🏦 Withdraw", callback_data="withdraw")],
+        [InlineKeyboardButton("🏦 Withdraw", callback_data="withdraw")]
     ]
     await update.message.reply_text(
-        "Welcome to Affiliate Bot 👋",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "Welcome 👋",
+        reply_markup=InlineKeyboardMarkup(kb)
     )
 
+# ---------- BUTTONS ----------
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    user = get_user(q.from_user)
+    user = users.find_one({"telegram_id": q.from_user.id})
 
-    if q.data == "dashboard":
-        await q.edit_message_text(
-            f"📊 Dashboard\n\n💰 Wallet: ₹{user['wallet']}\n💸 Total Earned: ₹{user['total_earned']}"
-        )
-
-    elif q.data == "wallet":
-        await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
-
-    elif q.data == "campaigns":
-        await q.edit_message_text(
-            "📢 Campaigns\n\n"
-            "1️⃣ App Install – ₹50\n"
-            "2️⃣ Signup – ₹100"
-        )
+    if q.data == "wallet":
+        await q.edit_message_text(f"Wallet: ₹{user['wallet']}")
 
     elif q.data == "withdraw":
-        if user["wallet"] < 100:
-            await q.edit_message_text("❌ Minimum withdraw ₹100")
+        context.user_data["withdraw_step"] = "amount"
+        await q.edit_message_text("Enter withdraw amount (min ₹100):")
+
+# ---------- TEXT HANDLER ----------
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    text = update.message.text.strip()
+    user = users.find_one({"telegram_id": uid})
+
+    # STEP 1: amount
+    if context.user_data.get("withdraw_step") == "amount":
+        if not text.isdigit():
+            await update.message.reply_text("Enter valid amount")
             return
 
-        amount = user["wallet"]
+        amount = int(text)
+        if amount < 100 or user["wallet"] < amount:
+            await update.message.reply_text("Invalid or insufficient balance")
+            context.user_data.clear()
+            return
 
-        # LOCK BALANCE
+        context.user_data["amount"] = amount
+        context.user_data["withdraw_step"] = "upi"
+        await update.message.reply_text("Enter your UPI ID:")
+
+    # STEP 2: upi
+    elif context.user_data.get("withdraw_step") == "upi":
+        upi = text
+        amount = context.user_data["amount"]
+
+        # 🔥 deduct balance NOW
         users.update_one(
-            {"telegram_id": user["telegram_id"]},
-            {"$set": {"wallet": 0}}
+            {"telegram_id": uid},
+            {"$inc": {"wallet": -amount}}
         )
 
         wid = withdraws.insert_one({
-            "user_id": user["telegram_id"],
+            "user_id": uid,
             "amount": amount,
-            "status": "pending",
-            "created_at": datetime.utcnow()
+            "upi": upi,
+            "status": "pending"
         }).inserted_id
 
-        await q.edit_message_text(
-            f"✅ Withdraw Request Sent\n\nAmount: ₹{amount}\nID: `{wid}`",
-            parse_mode="Markdown"
-        )
+        context.user_data.clear()
 
+        # notify admin
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Approve", callback_data=f"approve_{wid}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{wid}")
+            ]
+        ])
         await context.bot.send_message(
             ADMIN_ID,
-            f"🆕 Withdraw Request\n\nID: {wid}\nUser: {user['telegram_id']}\nAmount: ₹{amount}",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("✅ Approve", callback_data=f"approve_{wid}"),
-                    InlineKeyboardButton("❌ Reject", callback_data=f"reject_{wid}")
-                ]
-            ])
+            f"Withdraw Request\nUser: {uid}\nAmount: ₹{amount}\nUPI: {upi}",
+            reply_markup=kb
         )
 
-# ================= ADMIN =================
-async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("Withdraw request submitted ⏳")
+
+# ---------- ADMIN ACTION ----------
+async def admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
 
-    action, wid = q.data.split("_", 1)
-    req = withdraws.find_one({"_id": withdraws.codec_options.document_class(wid)})
+    action, wid = q.data.split("_")
+    w = withdraws.find_one({"_id": ObjectId(wid)})
 
-    # fallback if ObjectId parsing fails
-    req = withdraws.find_one({"_id": wid})
-
-    if not req or req["status"] != "pending":
-        await q.edit_message_text("❌ Invalid withdraw ID")
+    if not w or w["status"] != "pending":
+        await q.edit_message_text("Already processed")
         return
 
     if action == "approve":
         withdraws.update_one(
-            {"_id": req["_id"]},
-            {"$set": {"status": "approved", "approved_at": datetime.utcnow()}}
+            {"_id": ObjectId(wid)},
+            {"$set": {"status": "approved"}}
         )
-        await q.edit_message_text("✅ Withdraw Approved")
+        await q.edit_message_text("Approved ✅")
+        await context.bot.send_message(w["user_id"], "Withdraw approved ✅")
 
     elif action == "reject":
         users.update_one(
-            {"telegram_id": req["user_id"]},
-            {"$inc": {"wallet": req["amount"]}}
+            {"telegram_id": w["user_id"]},
+            {"$inc": {"wallet": w["amount"]}}
         )
         withdraws.update_one(
-            {"_id": req["_id"]},
-            {"$set": {"status": "rejected", "rejected_at": datetime.utcnow()}}
+            {"_id": ObjectId(wid)},
+            {"$set": {"status": "rejected"}}
         )
-        await q.edit_message_text("❌ Withdraw Rejected & Amount Refunded")
+        await q.edit_message_text("Rejected ❌")
+        await context.bot.send_message(w["user_id"], "Withdraw rejected, amount refunded")
 
-# ================= MAIN =================
-def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+# ---------- RUN ----------
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(admin_action, pattern="^(approve|reject)_"))
+app.add_handler(CallbackQueryHandler(buttons))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
-    app.add_handler(CallbackQueryHandler(buttons))
-
-    print("🤖 Bot is running...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+print("Bot is running...")
+app.run_polling()
