@@ -78,8 +78,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for c in campaigns.find({"status": "active"}):
             found = True
-            base_link = c.get("link", "")
-            tracking_link = f"{base_link}&p1={user_id}"
+            tracking_link = f"{c['link']}&p1={user_id}"
 
             text += (
                 f"🔥 {c['name']}\n"
@@ -87,7 +86,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👉 {tracking_link}\n\n"
             )
 
-        # IMPORTANT: send_message (Telegram silent fail fix)
         await context.bot.send_message(
             chat_id=q.message.chat.id,
             text=text if found else "❌ No campaigns available"
@@ -207,25 +205,8 @@ async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ========= ADMIN COMMANDS =========
-async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Not admin")
-        return
-
-    uid = int(context.args[0])
-    amt = int(context.args[1])
-
-    users.update_one(
-        {"telegram_id": uid},
-        {"$inc": {"wallet": amt, "total_earned": amt}}
-    )
-    await update.message.reply_text("✅ Balance added")
-
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 addcampaign command received")
-
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Not admin")
         return
 
     if len(context.args) < 4:
@@ -239,7 +220,7 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payout = int(context.args[2])
     link = context.args[3]
 
-    res = campaigns.insert_one({
+    campaigns.insert_one({
         "name": name,
         "type": ctype,
         "payout": payout,
@@ -248,19 +229,43 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "created_at": datetime.utcnow()
     })
 
+    await update.message.reply_text("✅ Campaign added")
+
+async def pausecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    name = context.args[0]
+    res = campaigns.update_one(
+        {"name": name},
+        {"$set": {"status": "paused"}}
+    )
+
     await update.message.reply_text(
-        f"✅ Campaign Added\n\n"
-        f"Name: {name}\n"
-        f"Payout: ₹{payout}\n"
-        f"ID: {res.inserted_id}"
+        "⏸ Campaign paused" if res.matched_count else "❌ Campaign not found"
+    )
+
+async def resumecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    name = context.args[0]
+    res = campaigns.update_one(
+        {"name": name},
+        {"$set": {"status": "active"}}
+    )
+
+    await update.message.reply_text(
+        "▶️ Campaign resumed" if res.matched_count else "❌ Campaign not found"
     )
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("addbalance", addbalance))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
+app.add_handler(CommandHandler("pausecampaign", pausecampaign))
+app.add_handler(CommandHandler("resumecampaign", resumecampaign))
 app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
