@@ -1,125 +1,159 @@
 import os
+from datetime import datetime, date
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, ContextTypes, filters
 )
 from pymongo import MongoClient
 from bson import ObjectId
 
-# ============ CONFIG ============
+# ========= CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
-# ================================
+# ==========================
 
 client = MongoClient(MONGO_URI)
 db = client["affiliate_bot"]
+
 users = db["users"]
 withdraws = db["withdraws"]
+campaigns = db["campaigns"]
+applications = db["applications"]
 
-# ---------- START ----------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not users.find_one({"telegram_id": user.id}):
+# ========= HELPERS =========
+def get_user(user):
+    u = users.find_one({"telegram_id": user.id})
+    if not u:
         users.insert_one({
             "telegram_id": user.id,
-            "wallet": 0
+            "wallet": 0,
+            "total_earned": 0,
+            "last_withdraw_date": None
         })
+        u = users.find_one({"telegram_id": user.id})
+    return u
 
+# ========= START =========
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    get_user(update.effective_user)
     kb = [
+        [InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")],
+        [InlineKeyboardButton("📢 Campaigns", callback_data="campaigns")],
         [InlineKeyboardButton("💰 Wallet", callback_data="wallet")],
-        [InlineKeyboardButton("🏦 Withdraw", callback_data="withdraw")]
+        [InlineKeyboardButton("🏦 Withdraw", callback_data="withdraw")],
+        [InlineKeyboardButton("📜 Withdraw History", callback_data="history")]
     ]
     await update.message.reply_text(
-        "Welcome 👋",
+        "Welcome to Affiliate Bot 👋",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-# ---------- BUTTONS ----------
+# ========= BUTTONS =========
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    user = users.find_one({"telegram_id": q.from_user.id})
+    user = get_user(q.from_user)
 
-    if q.data == "wallet":
-        await q.edit_message_text(f"Wallet: ₹{user['wallet']}")
+    if q.data == "dashboard":
+        await q.edit_message_text(
+            f"📊 Dashboard\n\n"
+            f"💰 Wallet: ₹{user['wallet']}\n"
+            f"🏆 Total Earned: ₹{user['total_earned']}"
+        )
+
+    elif q.data == "wallet":
+        await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
+
+    elif q.data == "campaigns":
+        text = "📢 Campaigns\n\n"
+        for c in campaigns.find():
+            text += f"{c['name']} – ₹{c['payout']} [{c['type']}]\n"
+        await q.edit_message_text(text or "No campaigns")
 
     elif q.data == "withdraw":
+        today = date.today().isoformat()
+        if user["last_withdraw_date"] == today:
+            await q.edit_message_text("❌ Daily withdraw limit reached")
+            return
         context.user_data["withdraw_step"] = "amount"
         await q.edit_message_text("Enter withdraw amount (min ₹100):")
 
-# ---------- TEXT HANDLER ----------
+    elif q.data == "history":
+        text = "📜 Withdraw History\n\n"
+        found = False
+        for w in withdraws.find({"user_id": user["telegram_id"]}).sort("_id", -1).limit(5):
+            found = True
+            text += f"₹{w['amount']} – {w['status'].upper()}\n"
+        await q.edit_message_text(text if found else "No withdraw history")
+
+# ========= TEXT =========
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
-    user = users.find_one({"telegram_id": uid})
+    user = get_user(update.effective_user)
 
-    # STEP 1: amount
+    # Withdraw amount
     if context.user_data.get("withdraw_step") == "amount":
         if not text.isdigit():
             await update.message.reply_text("Enter valid amount")
             return
-
         amount = int(text)
         if amount < 100 or user["wallet"] < amount:
             await update.message.reply_text("Invalid or insufficient balance")
             context.user_data.clear()
             return
-
         context.user_data["amount"] = amount
         context.user_data["withdraw_step"] = "upi"
         await update.message.reply_text("Enter your UPI ID:")
 
-    # STEP 2: upi
+    # Withdraw UPI
     elif context.user_data.get("withdraw_step") == "upi":
-        upi = text
         amount = context.user_data["amount"]
+        upi = text
 
-        # 🔥 deduct balance NOW
         users.update_one(
             {"telegram_id": uid},
-            {"$inc": {"wallet": -amount}}
+            {
+                "$inc": {"wallet": -amount},
+                "$set": {"last_withdraw_date": date.today().isoformat()}
+            }
         )
 
         wid = withdraws.insert_one({
             "user_id": uid,
             "amount": amount,
             "upi": upi,
-            "status": "pending"
+            "status": "pending",
+            "created_at": datetime.utcnow()
         }).inserted_id
 
-        context.user_data.clear()
-
-        # notify admin
         kb = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("✅ Approve", callback_data=f"approve_{wid}"),
                 InlineKeyboardButton("❌ Reject", callback_data=f"reject_{wid}")
             ]
         ])
+
         await context.bot.send_message(
             ADMIN_ID,
-            f"Withdraw Request\nUser: {uid}\nAmount: ₹{amount}\nUPI: {upi}",
+            f"Withdraw Request\nUser: {uid}\n₹{amount}\nUPI: {upi}",
             reply_markup=kb
         )
 
+        context.user_data.clear()
         await update.message.reply_text("Withdraw request submitted ⏳")
 
-# ---------- ADMIN ACTION ----------
-async def admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========= ADMIN =========
+async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-
     action, wid = q.data.split("_")
     w = withdraws.find_one({"_id": ObjectId(wid)})
 
     if not w or w["status"] != "pending":
-        await q.edit_message_text("Already processed")
+        await q.edit_message_text("Invalid request")
         return
 
     if action == "approve":
@@ -142,10 +176,29 @@ async def admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("Rejected ❌")
         await context.bot.send_message(w["user_id"], "Withdraw rejected, amount refunded")
 
-# ---------- RUN ----------
+# ========= ADMIN ADD BALANCE =========
+async def addbalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    try:
+        uid = int(context.args[0])
+        amt = int(context.args[1])
+    except:
+        await update.message.reply_text("Usage: /addbalance user_id amount")
+        return
+
+    users.update_one(
+        {"telegram_id": uid},
+        {"$inc": {"wallet": amt, "total_earned": amt}}
+    )
+    await update.message.reply_text("Balance added ✅")
+
+# ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
+
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(admin_action, pattern="^(approve|reject)_"))
+app.add_handler(CommandHandler("addbalance", addbalance))
+app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
