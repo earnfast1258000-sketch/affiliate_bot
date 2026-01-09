@@ -67,10 +67,26 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
 
     elif q.data == "campaigns":
-        text = "📢 Campaigns\n\n"
-        for c in campaigns.find():
-            text += f"{c['name']} – ₹{c['payout']} [{c['type']}]\n"
-        await q.edit_message_text(text or "No campaigns")
+    user_id = q.from_user.id
+    text = "📣 Campaigns\n\n"
+
+    found = False
+    for c in campaigns.find():
+        found = True
+
+        # base affiliate link DB se
+        base_link = c["link"]   # example: https://affiliatepanel.com/offer?id=123
+
+        # tracking link with user_id (p1)
+        tracking_link = f"{base_link}&p1={user_id}"
+
+        text += (
+            f"🔥 {c['name']}\n"
+            f"💰 Payout: ₹{c['payout']} ({c['type']})\n"
+            f"👉 {tracking_link}\n\n"
+        )
+
+    await q.edit_message_text(text if found else "No campaigns available")
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
