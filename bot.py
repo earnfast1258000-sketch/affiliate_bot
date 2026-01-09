@@ -24,6 +24,7 @@ db = client["affiliate_bot"]
 users = db["users"]
 withdraws = db["withdraws"]
 campaigns = db["campaigns"]
+conversions = db["conversions"]  # NEW
 
 # ========= HELPERS =========
 def get_user(user):
@@ -83,13 +84,22 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += (
                 f"🔥 {c['name']}\n"
                 f"💰 ₹{c['payout']} ({c['type']})\n"
+                f"👤 User limit: {c['user_cap']}\n"
+                f"📆 Daily cap: ₹{c['daily_cap']}\n"
                 f"👉 {tracking_link}\n\n"
             )
 
-        await context.bot.send_message(
-            chat_id=q.message.chat.id,
-            text=text if found else "❌ No campaigns available"
-        )
+        # SAFE EDIT (no silent fail)
+        try:
+            await q.edit_message_text(
+                text if found else "❌ No campaigns available",
+                disable_web_page_preview=True
+            )
+        except:
+            await context.bot.send_message(
+                chat_id=q.message.chat.id,
+                text=text if found else "❌ No campaigns available"
+            )
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
@@ -112,106 +122,14 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await q.edit_message_text(text if found else "No withdraw history")
 
-# ========= TEXT HANDLER =========
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    text = update.message.text.strip()
-    user = get_user(update.effective_user)
-
-    if context.user_data.get("withdraw_step") == "amount":
-        if not text.isdigit():
-            await update.message.reply_text("❌ Enter valid amount")
-            return
-
-        amount = int(text)
-        if amount < 100 or user["wallet"] < amount:
-            await update.message.reply_text("❌ Invalid or insufficient balance")
-            context.user_data.clear()
-            return
-
-        context.user_data["amount"] = amount
-        context.user_data["withdraw_step"] = "upi"
-        await update.message.reply_text("Enter your UPI ID:")
-
-    elif context.user_data.get("withdraw_step") == "upi":
-        amount = context.user_data["amount"]
-        upi = text
-
-        users.update_one(
-            {"telegram_id": uid},
-            {
-                "$inc": {"wallet": -amount},
-                "$set": {"last_withdraw_date": date.today().isoformat()}
-            }
-        )
-
-        wid = withdraws.insert_one({
-            "user_id": uid,
-            "amount": amount,
-            "upi": upi,
-            "status": "pending",
-            "created_at": datetime.utcnow()
-        }).inserted_id
-
-        kb = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("✅ Approve", callback_data=f"approve_{wid}"),
-                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{wid}")
-            ]
-        ])
-
-        await context.bot.send_message(
-            ADMIN_ID,
-            f"💸 Withdraw Request\n\nUser: {uid}\nAmount: ₹{amount}\nUPI: {upi}",
-            reply_markup=kb
-        )
-
-        context.user_data.clear()
-        await update.message.reply_text("Withdraw request submitted ⏳")
-
-# ========= ADMIN ACTIONS =========
-async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    action, wid = q.data.split("_")
-    w = withdraws.find_one({"_id": ObjectId(wid)})
-
-    if not w or w["status"] != "pending":
-        await q.edit_message_text("❌ Invalid request")
-        return
-
-    if action == "approve":
-        withdraws.update_one(
-            {"_id": ObjectId(wid)},
-            {"$set": {"status": "approved"}}
-        )
-        await q.edit_message_text("✅ Approved")
-        await context.bot.send_message(w["user_id"], "✅ Withdraw approved")
-
-    elif action == "reject":
-        users.update_one(
-            {"telegram_id": w["user_id"]},
-            {"$inc": {"wallet": w["amount"]}}
-        )
-        withdraws.update_one(
-            {"_id": ObjectId(wid)},
-            {"$set": {"status": "rejected"}}
-        )
-        await q.edit_message_text("❌ Rejected")
-        await context.bot.send_message(
-            w["user_id"],
-            "❌ Withdraw rejected, amount refunded"
-        )
-
 # ========= ADMIN COMMANDS =========
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
 
-    if len(context.args) < 4:
+    if len(context.args) < 6:
         await update.message.reply_text(
-            "Usage:\n/addcampaign <name> <CPI/CPA> <amount> <link>"
+            "Usage:\n/addcampaign <name> <CPI/CPA> <amount> <link> <daily_cap> <user_cap>"
         )
         return
 
@@ -219,54 +137,27 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ctype = context.args[1].upper()
     payout = int(context.args[2])
     link = context.args[3]
+    daily_cap = int(context.args[4])
+    user_cap = int(context.args[5])
 
     campaigns.insert_one({
         "name": name,
         "type": ctype,
         "payout": payout,
         "link": link,
+        "daily_cap": daily_cap,
+        "user_cap": user_cap,
         "status": "active",
         "created_at": datetime.utcnow()
     })
 
-    await update.message.reply_text("✅ Campaign added")
-
-async def pausecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    name = context.args[0]
-    res = campaigns.update_one(
-        {"name": name},
-        {"$set": {"status": "paused"}}
-    )
-
-    await update.message.reply_text(
-        "⏸ Campaign paused" if res.matched_count else "❌ Campaign not found"
-    )
-
-async def resumecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    name = context.args[0]
-    res = campaigns.update_one(
-        {"name": name},
-        {"$set": {"status": "active"}}
-    )
-
-    await update.message.reply_text(
-        "▶️ Campaign resumed" if res.matched_count else "❌ Campaign not found"
-    )
+    await update.message.reply_text("✅ Campaign added with caps")
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
-app.add_handler(CommandHandler("pausecampaign", pausecampaign))
-app.add_handler(CommandHandler("resumecampaign", resumecampaign))
-app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
