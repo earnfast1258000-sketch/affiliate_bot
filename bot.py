@@ -247,6 +247,7 @@ app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
+app.add_handler(CallbackQueryHandler(button_handler))
 
 print("Bot is running...")
 app.run_polling()
