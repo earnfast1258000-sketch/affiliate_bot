@@ -1,5 +1,7 @@
 import os
+import threading
 from datetime import datetime, date
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
@@ -7,8 +9,6 @@ from telegram.ext import (
 )
 from pymongo import MongoClient
 from bson import ObjectId
-from flask import Flask, request
-import threading
 
 # ========= CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -38,16 +38,17 @@ def get_user(user_obj):
     return u
 
 def credit_user_for_campaign(user_id, campaign_name, payout):
+    # Campaign check
     camp = campaigns.find_one({"name": campaign_name, "status": "active"})
     if not camp:
-        return False, "Campaign not active or not found"
+        return False, "Campaign not active"
 
-    # Wallet Update
+    # Wallet credit
     users.update_one(
         {"telegram_id": user_id},
         {"$inc": {"wallet": payout, "total_earned": payout}}
     )
-    # Stats Update
+    # Stats record
     campaign_stats.insert_one({
         "campaign": campaign_name,
         "user_id": user_id,
@@ -60,76 +61,57 @@ app_flask = Flask(__name__)
 
 @app_flask.route("/postback", methods=["GET"])
 def postback():
-    # Railway Logs mein parameters check karne ke liye
     args = dict(request.args)
-    print(f"--- POSTBACK ATTEMPT ---")
-    print(f"Data Received: {args}")
+    print(f"DEBUG: Postback hit with {args}") # Railway logs ke liye
 
     secret = request.args.get("secret")
     user_id = request.args.get("p1") or request.args.get("user_id")
     campaign = request.args.get("campaign")
 
-    # 1. Parameter Check
+    # Error checking for 400 Bad Request
     if not secret or not user_id or not campaign:
-        print(f"RESULT: Failed - Missing Params")
-        return f"Missing Params: got {list(args.keys())}", 400
+        return f"Missing Params: {args}", 400
 
-    # 2. Secret Check
     if secret != POSTBACK_SECRET:
-        print(f"RESULT: Failed - Secret Mismatch (Got: {secret}, Expected: {POSTBACK_SECRET})")
-        return "Unauthorized: Invalid Secret", 403
+        return "Unauthorized Secret", 403
 
-    # 3. Process Credit
     try:
         u_id = int(user_id)
-        ok, msg = credit_user_for_campaign(u_id, campaign, 0) # Payout DB se aayega
-        
-        # NOTE: Humne payout 0 pass kiya hai kyunki credit_user function 
-        # khud DB se payout fetch karega agar aap chahein.
-        # Niche wala logic zyada safe hai:
-        
+        # DB se campaign check karke credit karna
         camp = campaigns.find_one({"name": campaign, "status": "active"})
         if not camp:
-            return f"Campaign {campaign} not found", 404
+            return f"Campaign {campaign} not found in DB", 404
             
         ok, msg = credit_user_for_campaign(u_id, campaign, camp["payout"])
-        
-        if ok:
-            print(f"RESULT: Success - Credited {u_id}")
-            return "ok"
-        else:
-            print(f"RESULT: Blocked - {msg}")
-            return f"blocked: {msg}", 200
+        return "ok" if ok else f"blocked: {msg}"
     except Exception as e:
-        print(f"RESULT: Error - {str(e)}")
         return f"Error: {str(e)}", 500
 
-# ========= BOT COMMANDS & BUTTONS (SAME AS YOURS) =========
+# ========= HANDLERS (Same as your original) =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_user(update.effective_user)
     kb = [[InlineKeyboardButton("📊 Dashboard", callback_data="dashboard")],
           [InlineKeyboardButton("📢 Campaigns", callback_data="campaigns")]]
-    await update.message.reply_text("Bot is Active!", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text("Bot restarted successfully!", reply_markup=InlineKeyboardMarkup(kb))
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Aapka purana buttons logic yahan aayega
-    pass
+# (Add your other handlers: buttons, text_handler, admin_actions here)
 
 # ========= RUN =========
 def run_flask():
-    # Railway Port Handling
     port = int(os.environ.get("PORT", 8080))
-    print(f"Flask starting on port {port}")
     app_flask.run(host="0.0.0.0", port=port, use_reloader=False)
 
 if __name__ == "__main__":
-    # Thread for Flask
+    # Flask in background
     threading.Thread(target=run_flask, daemon=True).start()
-    
-    # Start Telegram Bot
+
+    # Telegram Bot
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(buttons))
     
-    print("Bot Polling Started...")
-    app.run_polling()
+    # Conflict fix: Bot start hone se pehle purane webhook/session clear karega
+    app.add_handler(CommandHandler("start", start))
+    # (Baaki handlers register karein)
+
+    print("Starting bot...")
+    # drop_pending_updates=True se purane 'Conflict' khatam ho jayenge
+    app.run_polling(drop_pending_updates=True)
