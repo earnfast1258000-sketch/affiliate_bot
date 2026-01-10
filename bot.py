@@ -89,7 +89,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
 
             tracking_link = f"{base_link}&p1={user_id}"
-
             daily_cap = c.get("daily_cap", "∞")
             user_cap = c.get("user_cap", "∞")
 
@@ -162,16 +161,64 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         )
 
-        withdraws.insert_one({
+        wid = withdraws.insert_one({
             "user_id": uid,
             "amount": amount,
             "upi": upi,
             "status": "pending",
             "created_at": datetime.utcnow()
-        })
+        }).inserted_id
+
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Approve", callback_data=f"approve_{wid}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{wid}")
+            ]
+        ])
+
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"💸 New Withdraw Request\n\nUser ID: {uid}\nAmount: ₹{amount}\nUPI: {upi}",
+            reply_markup=kb
+        )
 
         context.user_data.clear()
         await update.message.reply_text("Withdraw request submitted ⏳")
+
+# ========= ADMIN ACTIONS =========
+async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    action, wid = q.data.split("_")
+    w = withdraws.find_one({"_id": ObjectId(wid)})
+
+    if not w or w["status"] != "pending":
+        await q.edit_message_text("❌ Invalid request")
+        return
+
+    if action == "approve":
+        withdraws.update_one(
+            {"_id": ObjectId(wid)},
+            {"$set": {"status": "approved"}}
+        )
+        await q.edit_message_text("✅ Approved")
+        await context.bot.send_message(w["user_id"], "✅ Withdraw approved")
+
+    elif action == "reject":
+        users.update_one(
+            {"telegram_id": w["user_id"]},
+            {"$inc": {"wallet": w["amount"]}}
+        )
+        withdraws.update_one(
+            {"_id": ObjectId(wid)},
+            {"$set": {"status": "rejected"}}
+        )
+        await q.edit_message_text("❌ Rejected")
+        await context.bot.send_message(
+            w["user_id"],
+            "❌ Withdraw rejected, amount refunded"
+        )
 
 # ========= ADMIN COMMAND =========
 async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -205,6 +252,7 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
