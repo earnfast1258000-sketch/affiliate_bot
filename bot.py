@@ -24,9 +24,33 @@ db = client["affiliate_bot"]
 users = db["users"]
 withdraws = db["withdraws"]
 campaigns = db["campaigns"]
+campaign_stats = db["campaign_stats"]
 
 # ========= HELPERS =========
 def get_user(user):
+
+def can_credit(campaign_name, user_id, daily_cap, user_cap):
+    today = date.today().isoformat()
+
+    day_count = campaign_stats.count_documents({
+        "campaign": campaign_name,
+        "date": today
+    })
+
+    user_count = campaign_stats.count_documents({
+        "campaign": campaign_name,
+        "date": today,
+        "user_id": user_id
+    })
+
+    if daily_cap != "∞" and day_count >= daily_cap:
+        return False
+
+    if user_cap != "∞" and user_count >= user_cap:
+        return False
+
+    return True
+
     u = users.find_one({"telegram_id": user.id})
     if not u:
         users.insert_one({
