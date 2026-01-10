@@ -79,34 +79,33 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
 
     elif q.data == "campaigns":
-    user_id = q.from_user.id
-    text = "📣 Campaigns\n\n"
-    found = False
+        user_id = q.from_user.id
+        text = "📣 Campaigns\n\n"
+        found = False
 
-    for c in campaigns.find({"status": "active"}):
-        base_link = c.get("link", "")
-        if not base_link:
-            continue
+        for c in campaigns.find({"status": "active"}):
+            base_link = c.get("link", "")
+            if not base_link:
+                continue
 
-        tracking_link = f"{base_link}&p1={user_id}"
+            tracking_link = f"{base_link}&p1={user_id}"
 
-        daily_cap = c.get("daily_cap", "∞")
-        user_cap = c.get("user_cap", "∞")
+            daily_cap = c.get("daily_cap", "∞")
+            user_cap = c.get("user_cap", "∞")
 
-        found = True
-        text += (
-            f"🔥 {c['name']}\n"
-            f"💰 ₹{c['payout']} ({c['type']})\n"
-            f"👤 User limit: {user_cap}\n"
-            f"📆 Daily cap: {daily_cap}\n"
-            f"👉 {tracking_link}\n\n"
+            found = True
+            text += (
+                f"🔥 {c['name']}\n"
+                f"💰 ₹{c['payout']} ({c['type']})\n"
+                f"👤 User limit: {user_cap}\n"
+                f"📆 Daily cap: {daily_cap}\n"
+                f"👉 {tracking_link}\n\n"
+            )
+
+        await q.message.reply_text(
+            text if found else "❌ No campaigns available",
+            disable_web_page_preview=True
         )
-
-    # safe reply
-    await q.message.reply_text(
-        text if found else "❌ No campaigns available",
-        disable_web_page_preview=True
-    )
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
@@ -116,13 +115,12 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data.clear()
         context.user_data["withdraw_step"] = "amount"
-
-        # ✅ FIX: reply_text
         await q.message.reply_text("Enter withdraw amount (min ₹100):")
 
     elif q.data == "history":
         text = "📜 Withdraw History\n\n"
         found = False
+
         for w in withdraws.find(
             {"user_id": user["telegram_id"]}
         ).sort("_id", -1).limit(5):
@@ -207,7 +205,7 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-app.add_handler(CallbackQueryHandler(buttons))   # 👈 सबसे ऊपर
+app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
