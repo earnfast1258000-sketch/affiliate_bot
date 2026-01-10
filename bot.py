@@ -147,17 +147,13 @@ def postback():
     print("CREDIT RESULT =", ok, msg)
 
     if ok:
-        try:
-            app.bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "🎉 Congratulations!\n\n"
-                    f"₹{camp['payout']} credited to your wallet 💰\n"
-                    f"Campaign: {campaign}"
-                )
-            )
-        except Exception as e:
-            print("Telegram message failed:", e)
+    try:
+        send_async_message(
+            user_id,
+            f"🎉 Congratulations!\n\n₹{camp['payout']} credited to your wallet 💰\nCampaign: {campaign}"
+        )
+    except Exception as e:
+        print("Telegram message failed:", e)
 
     return "ok" if ok else f"blocked: {msg}"
 
