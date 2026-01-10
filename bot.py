@@ -145,6 +145,8 @@ def postback():
 
     ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
 
+print("CREDIT RESULT =", ok, msg)
+
 if ok:
     try:
         app.bot.send_message(
@@ -160,9 +162,6 @@ if ok:
         print("Telegram message failed:", e)
 
 return "ok" if ok else f"blocked: {msg}"
-    print("CREDIT RESULT =", ok, msg)
-
-    return "ok" if ok else f"blocked: {msg}"
 
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
