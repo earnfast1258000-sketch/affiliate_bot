@@ -292,6 +292,58 @@ async def resumecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Campaign not found")
 
 
+async def listcampaigns(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    text = "📋 All Campaigns:\n\n"
+    found = False
+
+    for c in campaigns.find():
+        found = True
+        text += (
+            f"Name: {c['name']}\n"
+            f"Type: {c['type']}\n"
+            f"Payout: ₹{c['payout']}\n"
+            f"Status: {c.get('status','active')}\n"
+            f"Daily cap: {c.get('daily_cap','∞')}\n"
+            f"User cap: {c.get('user_cap','∞')}\n\n"
+        )
+
+    await update.message.reply_text(text if found else "No campaigns found")
+
+
+async def editcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Usage:\n/editcampaign <name> payout <amount>\n/editcampaign <name> link <new_link>"
+        )
+        return
+
+    name = context.args[0]
+    field = context.args[1].lower()
+    value = context.args[2]
+
+    if field == "payout":
+        value = int(value)
+        update_data = {"payout": value}
+    elif field == "link":
+        update_data = {"link": value}
+    else:
+        await update.message.reply_text("Field must be payout or link")
+        return
+
+    res = campaigns.update_one({"name": name}, {"$set": update_data})
+
+    if res.matched_count:
+        await update.message.reply_text("✅ Campaign updated")
+    else:
+        await update.message.reply_text("❌ Campaign not found")
+
+
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -301,6 +353,8 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
 app.add_handler(CommandHandler("pausecampaign", pausecampaign))
 app.add_handler(CommandHandler("resumecampaign", resumecampaign))
+app.add_handler(CommandHandler("listcampaigns", listcampaigns))
+app.add_handler(CommandHandler("editcampaign", editcampaign))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("Bot is running...")
