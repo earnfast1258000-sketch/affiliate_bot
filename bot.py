@@ -24,6 +24,10 @@ ADMIN_ID = int(ADMIN_ID)
 # ========= POSTBACK SERVER CONFIG =========
 app_flask = Flask(__name__)
 
+@app_flask.before_request
+def log_request():
+    print("POSTBACK HIT:", request.url)
+
 POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "mysecret123")
 
 # ========= DB =========
