@@ -242,12 +242,34 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "payout": payout,
         "link": link,
         "daily_cap": 100000,
-        "user_cap": 1,
+        "user_cap": 1000,
         "status": "active",
         "created_at": datetime.utcnow()
     })
 
     await update.message.reply_text("✅ Campaign added")
+
+
+async def pausecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if len(context.args) < 1:
+        await update.message.reply_text("Usage: /pausecampaign <campaign_name>")
+        return
+
+    name = context.args[0]
+
+    res = campaigns.update_one(
+        {"name": name},
+        {"$set": {"status": "paused"}}
+    )
+
+    if res.matched_count:
+        await update.message.reply_text("⏸ Campaign paused")
+    else:
+        await update.message.reply_text("❌ Campaign not found")
+
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
