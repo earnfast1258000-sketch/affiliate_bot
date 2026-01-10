@@ -7,7 +7,6 @@ from telegram.ext import (
 )
 from pymongo import MongoClient
 from bson import ObjectId
-
 from flask import Flask, request
 import threading
 
@@ -20,14 +19,14 @@ if not ADMIN_ID:
     raise Exception("ADMIN_ID not set")
 ADMIN_ID = int(ADMIN_ID)
 
-# ========= POSTBACK SERVER CONFIG =========
+POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "mysecret123")
+
+# ========= FLASK =========
 app_flask = Flask(__name__)
 
 @app_flask.before_request
 def log_request():
     print("POSTBACK HIT:", request.url)
-
-POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "mysecret123")
 
 # ========= DB =========
 client = MongoClient(MONGO_URI)
@@ -49,15 +48,7 @@ def get_user(user):
             "last_withdraw_date": None
         })
         u = users.find_one({"telegram_id": user.id})
-    else:
-        if "last_withdraw_date" not in u:
-            users.update_one(
-                {"telegram_id": user.id},
-                {"$set": {"last_withdraw_date": None}}
-            )
-            u["last_withdraw_date"] = None
     return u
-
 
 def can_credit(campaign_name, user_id, daily_cap, user_cap):
     today = date.today().isoformat()
@@ -80,7 +71,6 @@ def can_credit(campaign_name, user_id, daily_cap, user_cap):
         return False
 
     return True
-
 
 def credit_user_for_campaign(user_id, campaign_name, payout):
     campaign = campaigns.find_one({"name": campaign_name, "status": "active"})
@@ -106,7 +96,7 @@ def credit_user_for_campaign(user_id, campaign_name, payout):
 
     return True, "Credited"
 
-
+# ========= POSTBACK =========
 @app_flask.route("/postback", methods=["GET"])
 def postback():
     print("ARGS:", dict(request.args))
@@ -119,7 +109,7 @@ def postback():
         return f"missing params: {dict(request.args)}", 400
 
     if secret != POSTBACK_SECRET:
-        return f"unauthorized: expected={POSTBACK_SECRET}", 403
+        return "unauthorized", 403
 
     try:
         user_id = int(user_id)
@@ -134,8 +124,7 @@ def postback():
 
     return "ok" if ok else f"blocked: {msg}"
 
-
-# ========= START =========
+# ========= BOT =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_user(update.effective_user)
 
@@ -147,11 +136,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📜 Withdraw History", callback_data="history")]
     ]
 
-    await update.message.reply_text(
-        "Welcome to Affiliate Bot 👋",
-        reply_markup=InlineKeyboardMarkup(kb)
-    )
-
+    await update.message.reply_text("Welcome 👋", reply_markup=InlineKeyboardMarkup(kb))
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -159,61 +144,49 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(q.from_user)
 
     if q.data == "dashboard":
-        await q.edit_message_text(
-            f"📊 Dashboard\n\n💰 Wallet: ₹{user['wallet']}\n🏆 Total Earned: ₹{user['total_earned']}"
-        )
+        await q.edit_message_text(f"Wallet: ₹{user['wallet']}\nTotal: ₹{user['total_earned']}")
 
     elif q.data == "wallet":
-        await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
+        await q.edit_message_text(f"Wallet: ₹{user['wallet']}")
 
     elif q.data == "campaigns":
-        user_id = q.from_user.id
-        text = "📣 Campaigns\n\n"
-        found = False
-
+        text = "Campaigns:\n\n"
         for c in campaigns.find({"status": "active"}):
-            base_link = c.get("link", "")
-            if not base_link:
-                continue
-
-            tracking_link = f"{base_link}&p1={user_id}"
-
-            found = True
-            text += (
-                f"🔥 {c['name']}\n"
-                f"💰 ₹{c['payout']} ({c['type']})\n"
-                f"👉 {tracking_link}\n\n"
-            )
-
-        await q.message.reply_text(text if found else "❌ No campaigns available")
-
+            link = f"{c['link']}&p1={q.from_user.id}"
+            text += f"{c['name']} ₹{c['payout']}\n{link}\n\n"
+        await q.message.reply_text(text)
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
+async def adminpanel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
 
-async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
+    kb = [
+        [InlineKeyboardButton("➕ Add Campaign", callback_data="admin_add")],
+        [InlineKeyboardButton("📋 List Campaigns", callback_data="admin_list")]
+    ]
 
+    await update.message.reply_text("Admin Panel", reply_markup=InlineKeyboardMarkup(kb))
 
 async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pass
-
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text("Use commands directly")
 
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("admin", adminpanel))
+app.add_handler(CallbackQueryHandler(admin_buttons, pattern="^admin_"))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-
-print("Bot is running...")
-
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app_flask.run(host="0.0.0.0", port=port, use_reloader=False)
-
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
