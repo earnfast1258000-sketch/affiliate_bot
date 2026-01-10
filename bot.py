@@ -503,9 +503,9 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
-app.add_handler(CallbackQueryHandler(buttons))
+# commands
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("admin", adminpanel))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
 app.add_handler(CommandHandler("credit", testcredit))
 app.add_handler(CommandHandler("pausecampaign", pausecampaign))
@@ -514,8 +514,13 @@ app.add_handler(CommandHandler("listcampaigns", listcampaigns))
 app.add_handler(CommandHandler("editcampaign", editcampaign))
 app.add_handler(CommandHandler("setdailycap", setdailycap))
 app.add_handler(CommandHandler("setusercap", setusercap))
-app.add_handler(CommandHandler("admin", adminpanel))
-app.add_handler(CallbackQueryHandler(admin_buttons, pattern="^admin_"))
+
+# callback queries (IMPORTANT ORDER)
+app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"))
+app.add_handler(CallbackQueryHandler(admin_buttons, pattern="^admin_"))   # 👈 FIRST
+app.add_handler(CallbackQueryHandler(buttons))                            # 👈 LAST
+
+# messages
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("Bot is running...")
