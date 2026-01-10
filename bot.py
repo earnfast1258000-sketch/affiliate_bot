@@ -28,7 +28,7 @@ app_flask = Flask(__name__)
 def log_request():
     print("POSTBACK HIT:", request.url)
 
-POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "mysecret123")
+POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "bharatbhai2580")
 
 # ========= DB =========
 client = MongoClient(MONGO_URI)
