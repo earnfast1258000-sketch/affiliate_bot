@@ -483,6 +483,23 @@ async def adminpanel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+
+    msg = {
+        "admin_add": "Use: /addcampaign name CPI 50 link",
+        "admin_list": "Use: /listcampaigns",
+        "admin_edit": "Use: /editcampaign name payout link",
+        "admin_pause": "Use: /pausecampaign name",
+        "admin_resume": "Use: /resumecampaign name",
+        "admin_dailycap": "Use: /setdailycap name amount",
+        "admin_usercap": "Use: /setusercap name count"
+    }
+
+    await q.message.reply_text(msg.get(q.data, "Unknown option"))
+
+
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -498,6 +515,7 @@ app.add_handler(CommandHandler("editcampaign", editcampaign))
 app.add_handler(CommandHandler("setdailycap", setdailycap))
 app.add_handler(CommandHandler("setusercap", setusercap))
 app.add_handler(CommandHandler("admin", adminpanel))
+app.add_handler(CallbackQueryHandler(admin_buttons, pattern="^admin_"))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("Bot is running...")
