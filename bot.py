@@ -216,13 +216,31 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_cap = c.get("user_cap", "∞")
 
             found = True
-            text += (
-                f"🔥 {c['name']}\n"
-                f"💰 ₹{c['payout']} ({c['type']})\n"
-                f"👤 User limit: {user_cap}\n"
-                f"📆 Daily cap: {daily_cap}\n"
-                f"👉 {tracking_link}\n\n"
-            )
+            elif q.data == "campaigns":
+    user_id = q.from_user.id
+
+    for c in campaigns.find({"status": "active"}):
+        base_link = c.get("link", "")
+        if not base_link:
+            continue
+
+        tracking_link = f"{base_link}&p1={user_id}"
+
+        daily_cap = c.get("daily_cap", "∞")
+        user_cap = c.get("user_cap", "∞")
+
+        text = (
+            f"🔥 {c['name']}\n"
+            f"💰 ₹{c['payout']} ({c['type']})\n"
+            f"👤 User limit: {user_cap}\n"
+            f"📆 Daily cap: {daily_cap}"
+        )
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 Open Offer", url=tracking_link)]
+        ])
+
+        await q.message.reply_text(text, reply_markup=keyboard)
 
         await q.message.reply_text(
             text if found else "❌ No campaigns available",
