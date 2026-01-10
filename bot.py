@@ -144,22 +144,23 @@ def postback():
         return f"campaign not found: {campaign}", 404
 
     ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
+    print("CREDIT RESULT =", ok, msg)
 
-print("CREDIT RESULT =", ok, msg)
-
-if ok:
-    try:
-        app.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "🎉 Congratulations!\n\n"
-                f"₹{camp['payout']} credited to your wallet 💰\n"
-                f"Campaign: {campaign}\n\n"
-                "Check your wallet in the bot."
+    if ok:
+        try:
+            app.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "🎉 Congratulations!\n\n"
+                    f"₹{camp['payout']} credited to your wallet 💰\n"
+                    f"Campaign: {campaign}\n\n"
+                    "Check your wallet in the bot."
+                )
             )
-        )
-    except Exception as e:
-        print("Telegram message failed:", e)
+        except Exception as e:
+            print("Telegram message failed:", e)
+
+    return "ok" if ok else f"blocked: {msg}"
 
 return "ok" if ok else f"blocked: {msg}"
 
