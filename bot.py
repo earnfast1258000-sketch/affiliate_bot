@@ -147,15 +147,18 @@ def postback():
     print("CREDIT RESULT =", ok, msg)
 
     if ok:
-    try:
-        send_async_message(
-            user_id,
-            f"🎉 Congratulations!\n\n₹{camp['payout']} credited to your wallet 💰\nCampaign: {campaign}"
-        )
-    except Exception as e:
-        print("Telegram message failed:", e)
+        try:
+            send_async_message(
+                user_id,
+                f"🎉 Congratulations!\n\n₹{camp['payout']} credited to your wallet 💰\nCampaign: {campaign}"
+            )
+        except Exception as e:
+            print("Telegram message failed:", e)
 
-    return "ok" if ok else f"blocked: {msg}"
+        return "ok"
+    else:
+        return f"blocked: {msg}"
+
 
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -598,3 +601,11 @@ if __name__ == "__main__":
 
     # Telegram bot
     app.run_polling(drop_pending_updates=True)
+
+import asyncio
+
+def send_async_message(chat_id, text):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(app.bot.send_message(chat_id=chat_id, text=text))
+    loop.close()
