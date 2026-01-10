@@ -107,18 +107,17 @@ def credit_user_for_campaign(user_id, campaign_name, payout):
 
 @app_flask.route("/postback", methods=["GET"])
 def postback():
+    print("ARGS:", dict(request.args))   # 👈 DEBUG
+
     secret = request.args.get("secret")
-
-    # accept both p1 and user_id
     user_id = request.args.get("p1") or request.args.get("user_id")
-
     campaign = request.args.get("campaign")
 
     if not secret or not user_id or not campaign:
-        return f"missing params: secret={secret}, user_id={user_id}, campaign={campaign}", 400
+        return f"missing params: {dict(request.args)}", 400
 
     if secret != POSTBACK_SECRET:
-        return "unauthorized", 403
+        return f"unauthorized: expected={POSTBACK_SECRET}", 403
 
     try:
         user_id = int(user_id)
@@ -131,10 +130,7 @@ def postback():
 
     ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
 
-    if ok:
-        return "ok", 200
-    else:
-        return f"blocked: {msg}", 200
+    return "ok" if ok else f"blocked: {msg}"
 
 
 # ========= START =========
