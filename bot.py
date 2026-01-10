@@ -2,9 +2,12 @@ import asyncio
 
 def send_message_safe(chat_id, text):
     try:
-        asyncio.create_task(
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
             app.bot.send_message(chat_id=chat_id, text=text)
         )
+        loop.close()
     except Exception as e:
         print("Telegram send failed:", e)
 
@@ -163,7 +166,6 @@ if ok:
     )
 
 return "ok" if ok else f"blocked: {msg}"
-
 
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
