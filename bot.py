@@ -1,3 +1,16 @@
+import asyncio
+
+def send_async_message(chat_id, text):
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            app.bot.send_message(chat_id=chat_id, text=text)
+        )
+        loop.close()
+    except Exception as e:
+        print("Async send failed:", e)
+
 import os
 from datetime import datetime, date
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -601,11 +614,3 @@ if __name__ == "__main__":
 
     # Telegram bot
     app.run_polling(drop_pending_updates=True)
-
-import asyncio
-
-def send_async_message(chat_id, text):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(app.bot.send_message(chat_id=chat_id, text=text))
-    loop.close()
