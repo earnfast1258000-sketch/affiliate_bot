@@ -153,16 +153,13 @@ def postback():
                 text=(
                     "🎉 Congratulations!\n\n"
                     f"₹{camp['payout']} credited to your wallet 💰\n"
-                    f"Campaign: {campaign}\n\n"
-                    "Check your wallet in the bot."
+                    f"Campaign: {campaign}"
                 )
             )
         except Exception as e:
             print("Telegram message failed:", e)
 
     return "ok" if ok else f"blocked: {msg}"
-
-return "ok" if ok else f"blocked: {msg}"
 
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
