@@ -28,7 +28,7 @@ app_flask = Flask(__name__)
 def log_request():
     print("POSTBACK HIT:", request.url)
 
-POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "bharatbhai2580")
+POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "mysecret123")
 
 # ========= DB =========
 client = MongoClient(MONGO_URI)
@@ -138,12 +138,15 @@ def postback():
         return "invalid user id", 400
 
     camp = campaigns.find_one({"name": campaign, "status": "active"})
-    if not camp:
-        return f"campaign not found: {campaign}", 404
+print("FOUND CAMPAIGN =", camp)
 
-    ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
+if not camp:
+    return f"campaign not found: {campaign}", 404
 
-    return "ok" if ok else f"blocked: {msg}"
+ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
+print("CREDIT RESULT =", ok, msg)
+
+return "ok" if ok else f"blocked: {msg}"
 
 
 # ========= START =========
