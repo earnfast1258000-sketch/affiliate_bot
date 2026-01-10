@@ -196,9 +196,9 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+app.add_handler(CallbackQueryHandler(buttons))   # 👈 सबसे ऊपर
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
-app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("Bot is running...")
