@@ -567,8 +567,7 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 print("Bot is running...")
 
 def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app_flask.run(host="0.0.0.0", port=port, use_reloader=False)
+    app_flask.run(host="0.0.0.0", port=5000, use_reloader=False)
 
 import threading
 threading.Thread(target=run_flask, daemon=True).start()
