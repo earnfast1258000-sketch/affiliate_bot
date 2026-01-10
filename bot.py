@@ -463,6 +463,26 @@ async def setusercap(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Campaign not found")
 
 
+async def adminpanel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    kb = [
+        [InlineKeyboardButton("➕ Add Campaign", callback_data="admin_add")],
+        [InlineKeyboardButton("📋 List Campaigns", callback_data="admin_list")],
+        [InlineKeyboardButton("✏ Edit Campaign", callback_data="admin_edit")],
+        [InlineKeyboardButton("⏸ Pause Campaign", callback_data="admin_pause")],
+        [InlineKeyboardButton("▶ Resume Campaign", callback_data="admin_resume")],
+        [InlineKeyboardButton("🎯 Set Daily Cap", callback_data="admin_dailycap")],
+        [InlineKeyboardButton("👤 Set User Cap", callback_data="admin_usercap")]
+    ]
+
+    await update.message.reply_text(
+        "🛠 Admin Control Panel",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+
+
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -477,6 +497,7 @@ app.add_handler(CommandHandler("listcampaigns", listcampaigns))
 app.add_handler(CommandHandler("editcampaign", editcampaign))
 app.add_handler(CommandHandler("setdailycap", setdailycap))
 app.add_handler(CommandHandler("setusercap", setusercap))
+app.add_handler(CommandHandler("admin", adminpanel))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("Bot is running...")
