@@ -1,15 +1,12 @@
 import asyncio
 
-def send_async_message(chat_id, text):
+def send_message_safe(chat_id, text):
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(
+        asyncio.create_task(
             app.bot.send_message(chat_id=chat_id, text=text)
         )
-        loop.close()
     except Exception as e:
-        print("Async send failed:", e)
+        print("Telegram send failed:", e)
 
 import os
 from datetime import datetime, date
@@ -160,11 +157,10 @@ def postback():
     print("CREDIT RESULT =", ok, msg)
 
     if ok:
-        try:
-            send_async_message(
-                user_id,
-                f"🎉 Congratulations!\n\n₹{camp['payout']} credited to your wallet 💰\nCampaign: {campaign}"
-            )
+    send_message_safe(
+        user_id,
+        f"🎉 Congratulations!\n\n₹{camp['payout']} credited to your wallet 💰\nCampaign: {campaign}"
+    )
         except Exception as e:
             print("Telegram message failed:", e)
 
