@@ -419,6 +419,50 @@ async def editcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Campaign not found")
 
 
+async def setdailycap(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /setdailycap <campaign_name> <amount>")
+        return
+
+    name = context.args[0]
+    cap = int(context.args[1])
+
+    res = campaigns.update_one(
+        {"name": name},
+        {"$set": {"daily_cap": cap}}
+    )
+
+    if res.matched_count:
+        await update.message.reply_text(f"✅ Daily cap updated to {cap}")
+    else:
+        await update.message.reply_text("❌ Campaign not found")
+
+
+async def setusercap(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /setusercap <campaign_name> <count>")
+        return
+
+    name = context.args[0]
+    cap = int(context.args[1])
+
+    res = campaigns.update_one(
+        {"name": name},
+        {"$set": {"user_cap": cap}}
+    )
+
+    if res.matched_count:
+        await update.message.reply_text(f"✅ User cap updated to {cap}")
+    else:
+        await update.message.reply_text("❌ Campaign not found")
+
+
 # ========= RUN =========
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -431,6 +475,8 @@ app.add_handler(CommandHandler("pausecampaign", pausecampaign))
 app.add_handler(CommandHandler("resumecampaign", resumecampaign))
 app.add_handler(CommandHandler("listcampaigns", listcampaigns))
 app.add_handler(CommandHandler("editcampaign", editcampaign))
+app.add_handler(CommandHandler("setdailycap", setdailycap))
+app.add_handler(CommandHandler("setusercap", setusercap))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("Bot is running...")
