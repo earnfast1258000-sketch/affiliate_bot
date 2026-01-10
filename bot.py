@@ -28,6 +28,24 @@ campaign_stats = db["campaign_stats"]
 
 # ========= HELPERS =========
 def get_user(user):
+    u = users.find_one({"telegram_id": user.id})
+    if not u:
+        users.insert_one({
+            "telegram_id": user.id,
+            "wallet": 0,
+            "total_earned": 0,
+            "last_withdraw_date": None
+        })
+        u = users.find_one({"telegram_id": user.id})
+    else:
+        if "last_withdraw_date" not in u:
+            users.update_one(
+                {"telegram_id": user.id},
+                {"$set": {"last_withdraw_date": None}}
+            )
+            u["last_withdraw_date"] = None
+    return u
+
 
 def can_credit(campaign_name, user_id, daily_cap, user_cap):
     today = date.today().isoformat()
@@ -50,24 +68,6 @@ def can_credit(campaign_name, user_id, daily_cap, user_cap):
         return False
 
     return True
-
-    u = users.find_one({"telegram_id": user.id})
-    if not u:
-        users.insert_one({
-            "telegram_id": user.id,
-            "wallet": 0,
-            "total_earned": 0,
-            "last_withdraw_date": None
-        })
-        u = users.find_one({"telegram_id": user.id})
-    else:
-        if "last_withdraw_date" not in u:
-            users.update_one(
-                {"telegram_id": user.id},
-                {"$set": {"last_withdraw_date": None}}
-            )
-            u["last_withdraw_date"] = None
-    return u
 
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
