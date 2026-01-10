@@ -114,11 +114,18 @@ def postback():
     print("ARGS:", dict(request.args))   # 👈 DEBUG
 
     secret = request.args.get("secret")
-    user_id = request.args.get("p1") or request.args.get("user_id")
-    campaign = request.args.get("campaign")
+user_id = request.args.get("p1") or request.args.get("user_id")
 
-    if not secret or not user_id or not campaign:
-        return f"missing params: {dict(request.args)}", 400
+campaign = (
+    request.args.get("campaign")
+    or request.args.get("camp")
+    or request.args.get("offer")
+    or request.args.get("offer_name")
+    or request.args.get("cid")
+)
+
+if not secret or not user_id or not campaign:
+    return f"missing params: {dict(request.args)}", 400
 
     if secret != POSTBACK_SECRET:
         return f"unauthorized: expected={POSTBACK_SECRET}", 403
