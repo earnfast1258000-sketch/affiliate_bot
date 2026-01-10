@@ -218,7 +218,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data.clear()
         context.user_data["withdraw_step"] = "amount"
-        await q.message.reply_text("Enter withdraw amount (min ₹100):")
+        await q.message.reply_text("Enter withdraw amount (min ₹10):")
 
     elif q.data == "history":
         text = "📜 Withdraw History\n\n"
