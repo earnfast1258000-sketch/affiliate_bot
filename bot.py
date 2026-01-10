@@ -567,6 +567,5 @@ def run_flask():
     app_flask.run(host="0.0.0.0", port=port, use_reloader=False)
 
 if __name__ == "__main__":
-    import threading
     threading.Thread(target=run_flask, daemon=True).start()
     app.run_polling()
