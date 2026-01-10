@@ -578,8 +578,12 @@ print("Bot is running...")
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
-    app_flask.run(host="0.0.0.0", port=port, use_reloader=False)
+    app_flask.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    app.run_polling()
+    # Flask thread
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+
+    # Telegram bot
+    app.run_polling(drop_pending_updates=True)
