@@ -21,6 +21,11 @@ if not ADMIN_ID:
     raise Exception("ADMIN_ID not set")
 ADMIN_ID = int(ADMIN_ID)
 
+# ========= POSTBACK SERVER CONFIG =========
+app_flask = Flask(__name__)
+
+POSTBACK_SECRET = os.getenv("POSTBACK_SECRET", "mysecret123")
+
 # ========= DB =========
 client = MongoClient(MONGO_URI)
 db = client["affiliate_bot"]
