@@ -8,6 +8,10 @@ from telegram.ext import (
 from pymongo import MongoClient
 from bson import ObjectId
 
+# ✅ ADD THESE
+from flask import Flask, request
+import threading
+
 # ========= CONFIG =========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
