@@ -562,4 +562,10 @@ app.add_handler(CallbackQueryHandler(buttons))                            # 👈
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("Bot is running...")
+
+def run_flask():
+    app_flask.run(host="0.0.0.0", port=8080)
+
+threading.Thread(target=run_flask).start()
+
 app.run_polling()
