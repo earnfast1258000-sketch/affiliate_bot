@@ -109,26 +109,28 @@ def credit_user_for_campaign(user_id, campaign_name, payout):
 
     return True, "Credited"
 
+
 @app_flask.route("/postback", methods=["GET"])
 def postback():
-    print("ARGS:", dict(request.args))
+    args = dict(request.args)
+    print("POSTBACK ARGS =", args)
 
-    secret = request.args.get("secret")
-    user_id = request.args.get("p1") or request.args.get("user_id")
+    secret = args.get("secret")
+    user_id = args.get("p1") or args.get("user_id")
 
     campaign = (
-        request.args.get("campaign")
-        or request.args.get("camp")
-        or request.args.get("offer")
-        or request.args.get("offer_name")
-        or request.args.get("cid")
+        args.get("campaign")
+        or args.get("camp")
+        or args.get("offer")
+        or args.get("offer_name")
+        or args.get("cid")
     )
 
     if not secret or not user_id or not campaign:
-        return f"missing params: {dict(request.args)}", 400
+        return f"missing params: {args}", 400
 
     if secret != POSTBACK_SECRET:
-        return f"unauthorized: expected={POSTBACK_SECRET}", 403
+        return f"unauthorized: {secret}", 403
 
     try:
         user_id = int(user_id)
@@ -137,7 +139,7 @@ def postback():
 
     camp = campaigns.find_one({"name": campaign, "status": "active"})
     if not camp:
-        return "campaign not found", 404
+        return f"campaign not found: {campaign}", 404
 
     ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
 
