@@ -215,8 +215,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             daily_cap = c.get("daily_cap", "∞")
             user_cap = c.get("user_cap", "∞")
 
-            found = True
-            elif q.data == "campaigns":
+            if q.data == "profile":
+    # profile ka code
+
+elif q.data == "campaigns":
     user_id = q.from_user.id
 
     for c in campaigns.find({"status": "active"}):
