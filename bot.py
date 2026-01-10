@@ -301,6 +301,30 @@ async def addcampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Campaign added")
 
 
+async def testcredit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /credit user_id campaign_name")
+        return
+
+    user_id = int(context.args[0])
+    campaign_name = context.args[1]
+
+    campaign = campaigns.find_one({"name": campaign_name})
+    if not campaign:
+        await update.message.reply_text("Campaign not found")
+        return
+
+    ok, msg = credit_user_for_campaign(user_id, campaign_name, campaign["payout"])
+
+    if ok:
+        await update.message.reply_text("✅ Credited successfully")
+    else:
+        await update.message.reply_text(f"❌ Credit blocked: {msg}")
+
+
 async def pausecampaign(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -402,6 +426,7 @@ app.add_handler(CallbackQueryHandler(admin_actions, pattern="^(approve|reject)_"
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcampaign", addcampaign))
+app.add_handler(CommandHandler("credit", testcredit))
 app.add_handler(CommandHandler("pausecampaign", pausecampaign))
 app.add_handler(CommandHandler("resumecampaign", resumecampaign))
 app.add_handler(CommandHandler("listcampaigns", listcampaigns))
