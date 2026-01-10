@@ -567,6 +567,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app_flask.run(host="0.0.0.0", port=port)
 
+import threading
 threading.Thread(target=run_flask, daemon=True).start()
 
 app.run_polling()
