@@ -36,6 +36,13 @@ def get_user(user):
             "last_withdraw_date": None
         })
         u = users.find_one({"telegram_id": user.id})
+    else:
+        if "last_withdraw_date" not in u:
+            users.update_one(
+                {"telegram_id": user.id},
+                {"$set": {"last_withdraw_date": None}}
+            )
+            u["last_withdraw_date"] = None
     return u
 
 # ========= START =========
@@ -103,7 +110,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
-        if user["last_withdraw_date"] == today:
+        if user.get("last_withdraw_date") == today:
             await q.message.reply_text("❌ Daily withdraw limit reached")
             return
 
