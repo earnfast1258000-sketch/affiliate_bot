@@ -263,7 +263,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         amount = int(text)
-        if amount < 100 or user["wallet"] < amount:
+        if amount < 10 or user["wallet"] < amount:
             await update.message.reply_text("❌ Invalid or insufficient balance")
             # Clear logic modified slightly to allow retry or cancel
             context.user_data.clear()
