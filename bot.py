@@ -125,6 +125,7 @@ def credit_user_for_campaign(user_id, campaign_name, payout):
 
 @app_flask.route("/postback", methods=["GET"])
 def postback():
+
     args = dict(request.args)
     print("POSTBACK ARGS =", args)
 
@@ -157,15 +158,15 @@ def postback():
         return f"campaign not found: {campaign}", 404
 
     ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
-print("CREDIT RESULT =", ok, msg)
+    print("CREDIT RESULT =", ok, msg)
 
-if ok:
-    send_message_safe(
-        user_id,
-        f"🎉 Congratulations!\n\n₹{camp['payout']} credited to your wallet 💰\nCampaign: {campaign}"
-    )
+    if ok:
+        send_message_safe(
+            user_id,
+            f"🎉 Congratulations!\n\n₹{camp['payout']} credited to your wallet 💰\nCampaign: {campaign}"
+        )
 
-return "ok" if ok else f"blocked: {msg}"
+    return "ok" if ok else f"blocked: {msg}"
 
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
