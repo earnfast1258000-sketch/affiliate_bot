@@ -189,8 +189,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+
     user = get_user(q.from_user)
 
+    # ---------- DASHBOARD ----------
     if q.data == "dashboard":
         await q.edit_message_text(
             f"📊 Dashboard\n\n"
@@ -198,12 +200,21 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏆 Total Earned: ₹{user['total_earned']}"
         )
 
+    # ---------- WALLET ----------
     elif q.data == "wallet":
         await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
 
+    # ---------- PROFILE ----------
+    elif q.data == "profile":
+        await q.edit_message_text(
+            f"👤 Profile\n\n"
+            f"ID: {user['telegram_id']}\n"
+            f"Joined: {user.get('created_at', 'N/A')}"
+        )
+
+    # ---------- CAMPAIGNS ----------
     elif q.data == "campaigns":
         user_id = q.from_user.id
-        text = "📣 Campaigns\n\n"
         found = False
 
         for c in campaigns.find({"status": "active"}):
@@ -211,54 +222,47 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not base_link:
                 continue
 
+            found = True
+
             tracking_link = f"{base_link}&p1={user_id}"
+
             daily_cap = c.get("daily_cap", "∞")
             user_cap = c.get("user_cap", "∞")
 
-            if q.data == "profile":
-    # profile ka code
+            text = (
+                f"🔥 {c['name']}\n"
+                f"💰 ₹{c['payout']} ({c['type']})\n"
+                f"👤 User limit: {user_cap}\n"
+                f"📆 Daily cap: {daily_cap}"
+            )
 
-elif q.data == "campaigns":
-    user_id = q.from_user.id
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Open Offer", url=tracking_link)]
+            ])
 
-    for c in campaigns.find({"status": "active"}):
-        base_link = c.get("link", "")
-        if not base_link:
-            continue
+            await q.message.reply_text(
+                text,
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
 
-        tracking_link = f"{base_link}&p1={user_id}"
+        if not found:
+            await q.message.reply_text("❌ No campaigns available")
 
-        daily_cap = c.get("daily_cap", "∞")
-        user_cap = c.get("user_cap", "∞")
-
-        text = (
-            f"🔥 {c['name']}\n"
-            f"💰 ₹{c['payout']} ({c['type']})\n"
-            f"👤 User limit: {user_cap}\n"
-            f"📆 Daily cap: {daily_cap}"
-        )
-
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Open Offer", url=tracking_link)]
-        ])
-
-        await q.message.reply_text(text, reply_markup=keyboard)
-
-        await q.message.reply_text(
-            text if found else "❌ No campaigns available",
-            disable_web_page_preview=True
-        )
-
+    # ---------- WITHDRAW ----------
     elif q.data == "withdraw":
         today = date.today().isoformat()
+
         if user.get("last_withdraw_date") == today:
             await q.message.reply_text("❌ Daily withdraw limit reached")
             return
 
         context.user_data.clear()
         context.user_data["withdraw_step"] = "amount"
+
         await q.message.reply_text("Enter withdraw amount (min ₹10):")
 
+    # ---------- HISTORY ----------
     elif q.data == "history":
         text = "📜 Withdraw History\n\n"
         found = False
