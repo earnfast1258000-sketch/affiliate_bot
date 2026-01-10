@@ -192,7 +192,6 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = get_user(q.from_user)
 
-    # ---------- DASHBOARD ----------
     if q.data == "dashboard":
         await q.edit_message_text(
             f"📊 Dashboard\n\n"
@@ -200,31 +199,15 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏆 Total Earned: ₹{user['total_earned']}"
         )
 
-    # ---------- WALLET ----------
     elif q.data == "wallet":
         await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
 
-    # ---------- PROFILE ----------
-    elif q.data == "profile":
-        await q.edit_message_text(
-            f"👤 Profile\n\n"
-            f"ID: {user['telegram_id']}\n"
-            f"Joined: {user.get('created_at', 'N/A')}"
-        )
-
-    # ---------- CAMPAIGNS ----------
     elif q.data == "campaigns":
         user_id = q.from_user.id
         found = False
 
         for c in campaigns.find({"status": "active"}):
-            base_link = c.get("link", "")
-            if not base_link:
-                continue
-
             found = True
-
-            tracking_link = f"{base_link}&p1={user_id}"
 
             daily_cap = c.get("daily_cap", "∞")
             user_cap = c.get("user_cap", "∞")
@@ -236,8 +219,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📆 Daily cap: {daily_cap}"
             )
 
+            safe_url = f"{BASE_URL}/go/{c['name']}/{user_id}"
+
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🚀 Open Offer", url=tracking_link)]
+                [InlineKeyboardButton("🚀 Open Offer", url=safe_url)]
             ])
 
             await q.message.reply_text(
@@ -248,6 +233,34 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not found:
             await q.message.reply_text("❌ No campaigns available")
+
+    elif q.data == "withdraw":
+        today = date.today().isoformat()
+
+        if user.get("last_withdraw_date") == today:
+            await q.message.reply_text("❌ Daily withdraw limit reached")
+            return
+
+        context.user_data.clear()
+        context.user_data["withdraw_step"] = "amount"
+        await q.message.reply_text("Enter withdraw amount (min ₹10):")
+
+    elif q.data == "history":
+        text = "📜 Withdraw History\n\n"
+        found = False
+
+        for w in withdraws.find({"user_id": user["telegram_id"]}).sort("_id", -1).limit(5):
+            found = True
+            text += f"₹{w['amount']} – {w['status'].upper()}\n"
+
+        await q.message.reply_text(text if found else "No withdraw history")
+
+    elif q.data == "profile":
+        await q.edit_message_text(
+            f"👤 Profile\n\n"
+            f"ID: {user['telegram_id']}\n"
+            f"Wallet: ₹{user['wallet']}"
+        )
 
     # ---------- WITHDRAW ----------
     elif q.data == "withdraw":
