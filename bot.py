@@ -79,34 +79,34 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"💰 Wallet Balance\n\n₹{user['wallet']}")
 
     elif q.data == "campaigns":
-        user_id = q.from_user.id
-        text = "📣 Campaigns\n\n"
-        found = False
+    user_id = q.from_user.id
+    text = "📣 Campaigns\n\n"
+    found = False
 
-        for c in campaigns.find({"status": "active"}):
-    base_link = c.get("link", "")
-    if not base_link:
-        continue
+    for c in campaigns.find({"status": "active"}):
+        base_link = c.get("link", "")
+        if not base_link:
+            continue
 
-    tracking_link = f"{base_link}&p1={user_id}"
+        tracking_link = f"{base_link}&p1={user_id}"
 
-    daily_cap = c.get("daily_cap", "∞")
-    user_cap = c.get("user_cap", "∞")
+        daily_cap = c.get("daily_cap", "∞")
+        user_cap = c.get("user_cap", "∞")
 
-    found = True
-    text += (
-        f"🔥 {c['name']}\n"
-        f"💰 ₹{c['payout']} ({c['type']})\n"
-        f"👤 User limit: {user_cap}\n"
-        f"📆 Daily cap: {daily_cap}\n"
-        f"👉 {tracking_link}\n\n"
-    )
-
-        # ✅ FIX: reply_text (never silent fail)
-        await q.message.reply_text(
-            text if found else "❌ No campaigns available",
-            disable_web_page_preview=True
+        found = True
+        text += (
+            f"🔥 {c['name']}\n"
+            f"💰 ₹{c['payout']} ({c['type']})\n"
+            f"👤 User limit: {user_cap}\n"
+            f"📆 Daily cap: {daily_cap}\n"
+            f"👉 {tracking_link}\n\n"
         )
+
+    # safe reply
+    await q.message.reply_text(
+        text if found else "❌ No campaigns available",
+        disable_web_page_preview=True
+    )
 
     elif q.data == "withdraw":
         today = date.today().isoformat()
