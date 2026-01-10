@@ -77,19 +77,23 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         found = False
 
         for c in campaigns.find({"status": "active"}):
-            found = True
-            tracking_link = f"{c['link']}&p1={user_id}"
+    base_link = c.get("link", "")
+    if not base_link:
+        continue
 
-            daily_cap = c.get("daily_cap", "∞")
-            user_cap = c.get("user_cap", "∞")
+    tracking_link = f"{base_link}&p1={user_id}"
 
-            text += (
-                f"🔥 {c['name']}\n"
-                f"💰 ₹{c['payout']} ({c['type']})\n"
-                f"👤 User limit: {user_cap}\n"
-                f"📆 Daily cap: {daily_cap}\n"
-                f"👉 {tracking_link}\n\n"
-            )
+    daily_cap = c.get("daily_cap", "∞")
+    user_cap = c.get("user_cap", "∞")
+
+    found = True
+    text += (
+        f"🔥 {c['name']}\n"
+        f"💰 ₹{c['payout']} ({c['type']})\n"
+        f"👤 User limit: {user_cap}\n"
+        f"📆 Daily cap: {daily_cap}\n"
+        f"👉 {tracking_link}\n\n"
+    )
 
         # ✅ FIX: reply_text (never silent fail)
         await q.message.reply_text(
