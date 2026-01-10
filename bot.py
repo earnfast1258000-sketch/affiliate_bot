@@ -138,16 +138,15 @@ def postback():
         return "invalid user id", 400
 
     camp = campaigns.find_one({"name": campaign, "status": "active"})
-print("FOUND CAMPAIGN =", camp)
+    print("FOUND CAMPAIGN =", camp)
 
-if not camp:
-    return f"campaign not found: {campaign}", 404
+    if not camp:
+        return f"campaign not found: {campaign}", 404
 
-ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
-print("CREDIT RESULT =", ok, msg)
+    ok, msg = credit_user_for_campaign(user_id, campaign, camp["payout"])
+    print("CREDIT RESULT =", ok, msg)
 
-return "ok" if ok else f"blocked: {msg}"
-
+    return "ok" if ok else f"blocked: {msg}"
 
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
