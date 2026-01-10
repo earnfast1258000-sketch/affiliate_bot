@@ -69,6 +69,33 @@ def can_credit(campaign_name, user_id, daily_cap, user_cap):
 
     return True
 
+
+def credit_user_for_campaign(user_id, campaign_name, payout):
+    campaign = campaigns.find_one({"name": campaign_name, "status": "active"})
+    if not campaign:
+        return False, "Campaign not active"
+
+    daily_cap = campaign.get("daily_cap", "∞")
+    user_cap = campaign.get("user_cap", "∞")
+
+    if not can_credit(campaign_name, user_id, daily_cap, user_cap):
+        return False, "Cap reached"
+
+    # wallet credit
+    users.update_one(
+        {"telegram_id": user_id},
+        {"$inc": {"wallet": payout, "total_earned": payout}}
+    )
+
+    # save stats for cap tracking
+    campaign_stats.insert_one({
+        "campaign": campaign_name,
+        "user_id": user_id,
+        "date": date.today().isoformat()
+    })
+
+    return True, "Credited"
+
 # ========= START =========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_user(update.effective_user)
